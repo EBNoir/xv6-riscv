@@ -108,6 +108,16 @@ sys_close(void)
 }
 
 uint64
+sys_getppid(void)
+{
+    struct proc *my_proc = myproc();
+    int pid = my_proc->pid;
+    printf("pid actual: %d\n", pid);
+
+    return 0;
+}
+
+uint64
 sys_fstat(void)
 {
   struct file *f;
