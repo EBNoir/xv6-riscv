@@ -124,6 +124,12 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->numScheduled = 0;
+  p->staticPriority = 60;
+  p->runTime = 0;
+  p->startTime = 0;
+  p->sleepTime = 0;
+  p->totalRunTime = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -446,28 +452,63 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
   c->proc = 0;
-  for(;;){
+  for(;;)
+  {
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+    struct proc* process = 0;
+      int dp = 101;
+      for (p = proc; p < &proc[NPROC]; p++)
+      {
+        acquire(&p->lock);
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+        int niceness = 5;
+
+        if (p->numScheduled)
+        {
+          if (p->sleepTime + p->runTime != 0)
+            niceness = (p->sleepTime / (p->sleepTime + p->runTime)) * 10;
+          else
+            niceness = 5;
+        }
+
+        int val = p->staticPriority - niceness + 5;
+        int tmp = val < 100? val : 100;
+        int processDp = 0 > tmp? 0 : tmp;
+
+        int flag1 = (dp == processDp && p->numScheduled < process->numScheduled);
+        int flag2 = (dp == processDp && p->numScheduled == process->numScheduled && p->timeOfCreation < process->timeOfCreation);
+
+        if (p->state == RUNNABLE)
+        {
+          if(!process || dp > processDp || flag1 || flag2)
+          {
+            if (process)
+              release(&process->lock);
+
+            process = p;
+            dp = processDp;
+            continue;
+          }
+        }
+        release(&p->lock);
       }
-      release(&p->lock);
-    }
+
+      if (process)
+      {
+        process->numScheduled++;
+        process->startTime = ticks;
+        process->state = RUNNING;
+        process->runTime = 0;
+        process->sleepTime = 0;
+        c->proc = process;
+        swtch(&c->context, &process->context);
+        c->proc = 0;
+        release(&process->lock);
+      }
+
   }
 }
 
@@ -677,7 +718,56 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
+    printf("%d %d %s %d %d %d", p->pid, p->staticPriority, state, p->totalRunTime, ticks - p->timeOfCreation - p->totalRunTime, p->numScheduled);  
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+void
+updateTime()
+{
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+
+    if (p->state == RUNNING)
+    {
+      p->runTime++;
+      p->totalRunTime++;
+    }
+
+    if (p->state == SLEEPING)
+      p->sleepTime++;
+
+    release(&p->lock);
+
+  }
+}
+
+int set_priority(int priority, int pid)
+{
+    struct proc *p;
+
+    for(p = proc; p < &proc[NPROC]; p++)
+    {
+      acquire(&p->lock);
+      
+      if(p->pid == pid)
+      {
+        int val = p->staticPriority;
+        p->staticPriority = priority;
+
+        p->runTime = 0;
+        p->sleepTime = 0;
+
+        release(&p->lock);
+
+        if (val > priority)
+            yield();
+        return val;
+      }
+      release(&p->lock);
+    }
+    return -1;
 }
