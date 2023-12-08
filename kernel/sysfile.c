@@ -305,18 +305,18 @@ uint64
 sys_open(void)
 {
   char path[MAXPATH];
-  int fd, omode;
+  int fd, permissions;
   struct file *f;
   struct inode *ip;
   int n;
 
-  argint(1, &omode);
+  argint(1, &permissions);
   if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
 
   begin_op();
 
-  if(omode & O_CREATE){
+  if(permissions & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
     if(ip == 0){
       end_op();
@@ -328,7 +328,7 @@ sys_open(void)
       return -1;
     }
     ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
+    if(ip->type == T_DIR && permissions != O_RDONLY){
       iunlockput(ip);
       end_op();
       return -1;
@@ -357,10 +357,10 @@ sys_open(void)
     f->off = 0;
   }
   f->ip = ip;
-  f->readable = !(omode & O_WRONLY);
-  f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+  f->readable = !(permissions & O_WRONLY);
+  f->writable = (permissions & O_WRONLY) || (permissions & O_RDWR);
 
-  if((omode & O_TRUNC) && ip->type == T_FILE){
+  if((permissions & O_TRUNC) && ip->type == T_FILE){
     itrunc(ip);
   }
 
@@ -502,4 +502,18 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+
+uint64
+sys_Chmod(void)
+{
+  char *path;
+  int permissions;
+
+  if (argstr(0,&path)< 0 || argint(1,&permissions)<0){
+    return -1;
+  }
+
+  return chmod(path,permissions);
 }
