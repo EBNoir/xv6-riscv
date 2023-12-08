@@ -463,13 +463,6 @@ stati(struct inode *ip, struct stat *st)
   st->nlink = ip->nlink;
   st->size = ip->size;
 }
-/*
-int 
-chmod(char *path, int permissions)
-{
-printf("no se me ocurre nada");
-return 1;
-}*/
 
 // Read data from inode.
 // Caller must hold ip->lock.
